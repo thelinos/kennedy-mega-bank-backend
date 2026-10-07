@@ -27,31 +27,34 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.19.9",
-    "@prisma/composer": "0.24.0",
-    "@prisma/composer-prisma-cloud": "0.24.0",
+    "@prisma/composer": "0.25.0",
+    "@prisma/composer-prisma-cloud": "0.25.0",
     "@prisma/orm-mongo": "8.0.0-rc.12",
     "alchemy": "2.0.0-beta.78",
     "arktype": "^2.2.3",
+    "effect": "4.0.0-rc.115",
     "hono": "^4.12.2",
     "mongodb": "^7.1.0"
   },
   "devDependencies": {
     "@types/node": "^25.6.2",
-    "prisma": "8.0.0-rc.18",
+    "prisma": "8.0.0-rc.19",
     "tsdown": "^0.22.14",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   },
   "overrides": {
-    "effect": "4.0.0-rc.115",
     "@effect/platform-bun": "4.0.0-rc.115",
     "@effect/platform-node": "4.0.0-rc.115",
     "@effect/platform-node-shared": "4.0.0-rc.115",
     "@effect/sql-d1": "4.0.0-rc.115",
+    "@effect/sql-mysql2": "4.0.0-rc.115",
+    "@effect/sql-pg": "4.0.0-rc.115",
     "@effect/sql-sqlite-do": "4.0.0-rc.115",
     "@effect/vitest": "4.0.0-rc.115",
     "alchemy": {
       "mongodb": "^7.1.0"
-    }
+    },
+    "effect": "4.0.0-rc.115"
   }
 }
