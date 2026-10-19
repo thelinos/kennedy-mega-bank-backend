@@ -4,7 +4,7 @@ import { DatabaseConfig } from "../database/config.ts";
 import { requestLogger } from "../middleware/requestLogger.ts";
 import { errorHandler } from "../middleware/errorHandler.ts";
 import AppRegistry from "./app-registry.ts";
-import passport from "../config/oauth.config.ts";
+import passport, { configureGoogleOAuth } from "../config/oauth.config.ts";
 import { CreateUser, ForgotPassword, GoogleOAuth, PhoneAuth, Me, ResetPassword, Refresh, Logout, Login, VerifyUser } from "../../features/user/authentication/index.ts";
 import { CollectName, CollectProfilePicture, UpdateName, UpdateProfilePicture } from "../../features/user/account_details/index.ts";
 
@@ -46,6 +46,9 @@ export class App {
     // Initialize the app with databases if not already initialized
     if (!registry.isInitialized()) {
       await registry.initialize(this.databases);
+
+      // Configure Google OAuth (must be called after env vars are loaded)
+      configureGoogleOAuth();
 
       // Register middleware
       registry.registerMiddleware(requestLogger);

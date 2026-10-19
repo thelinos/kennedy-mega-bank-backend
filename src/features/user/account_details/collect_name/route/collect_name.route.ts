@@ -57,7 +57,7 @@ export class CollectName {
 
             // Check if user already provided name
             const existingCredential = await this.prismaClient.userCredential.findUnique({
-                where: { userId: req.user.userId }
+                where: { userId: req.user?.userId }
             });
 
             if (existingCredential?.firstName && existingCredential?.surname) {
