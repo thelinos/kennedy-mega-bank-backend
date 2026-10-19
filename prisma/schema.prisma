@@ -1,0 +1,123 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                  String                @id @default(uuid())
+  email               String?               @unique
+  password            String?
+  phoneNumber         String?               @unique
+  name                String?
+  emailVerified       Boolean               @default(false)
+  phoneVerified       Boolean               @default(false)
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  accounts            Account[]
+  emailTokens         EmailToken[]
+  passwordResetTokens PasswordResetToken[]
+  userCredential      UserCredential?
+  oauthAccounts       OAuthAccount[]
+  phoneVerifications  PhoneVerification[]
+}
+
+model UserCredential {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  firstName String?
+  middleName String?
+  surname   String?
+  profilePicture String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model Account {
+  id          String   @id @default(uuid())
+  userId      String
+  accountType String
+  balance     Float
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id])
+  transactions Transaction[]
+
+  @@index([userId])
+}
+
+model Transaction {
+  id          String   @id @default(uuid())
+  accountId   String
+  amount      Float
+  type        String
+  description String?
+  createdAt   DateTime @default(now())
+  account     Account  @relation(fields: [accountId], references: [id])
+
+  @@index([accountId])
+}
+
+model EmailToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([token])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([token])
+}
+
+model OAuthAccount {
+  id           String   @id @default(uuid())
+  userId       String
+  provider     String   // 'google', 'apple', etc.
+  providerId   String   // Unique ID from the provider
+  accessToken  String?
+  refreshToken String?
+  expiresAt    DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id])
+
+  @@unique([provider, providerId])
+  @@index([userId])
+}
+
+model PhoneVerification {
+  id        String   @id @default(uuid())
+  userId    String?
+  phoneNumber String
+  otp       String
+  expiresAt DateTime
+  verified  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([phoneNumber])
+  @@index([otp])
+}

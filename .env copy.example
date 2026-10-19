@@ -1,0 +1,26 @@
+# Environment
+NODE_ENV="development"
+PORT=3000
+
+# SQLite Database (Local)
+DATABASE_URL="file:./dev.db"
+
+# MongoDB
+MONGODB_URI="mongodb://localhost:27017/kennedy-mega-bank-dev"
+MONGODB_DB_NAME="kennedy-mega-bank-dev"
+
+# SendGrid Email Service
+SENDGRID_API_KEY="your-sendgrid-api-key"
+SENDGRID_FROM_EMAIL="noreply@kennedy-mega-bank.com"
+SENDGRID_FROM_NAME="Kennedy Mega Bank"
+
+# Base URL for verification links
+BASE_URL="http://localhost:3000"
+
+# JWT Configuration
+JWT_SECRET="your-secret-key-change-in-production"
+JWT_EXPIRES_IN="1h"
+REFRESH_TOKEN_EXPIRES_IN="7d"
+
+# CORS Configuration
+CORS_ORIGIN="*"
