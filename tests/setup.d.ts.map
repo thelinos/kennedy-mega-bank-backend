@@ -1,0 +1,10 @@
+{
+    "version": 3,
+    "file": "setup.d.ts",
+    "sourceRoot": "",
+    "sources": [
+        "setup.ts"
+    ],
+    "names": [],
+    "mappings": ""
+}
