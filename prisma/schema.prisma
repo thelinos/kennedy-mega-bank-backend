@@ -26,6 +26,8 @@ model User {
   userCredential      UserCredential?
   oauthAccounts       OAuthAccount[]
   phoneVerifications  PhoneVerification[]
+  refreshSessions     RefreshSession[]
+  idempotencyRecords  IdempotencyRecord[]
 }
 
 model UserCredential {
@@ -44,7 +46,8 @@ model Account {
   id          String   @id @default(uuid())
   userId      String
   accountType String
-  balance     Float
+  balanceMinorUnits BigInt   @default(0)
+  currency    String   @default("USD")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   user        User     @relation(fields: [userId], references: [id])
@@ -56,7 +59,7 @@ model Account {
 model Transaction {
   id          String   @id @default(uuid())
   accountId   String
-  amount      Float
+  amountMinorUnits BigInt   @default(0)
   type        String
   description String?
   createdAt   DateTime @default(now())
@@ -120,4 +123,41 @@ model PhoneVerification {
   @@index([userId])
   @@index([phoneNumber])
   @@index([otp])
+}
+
+model RefreshSession {
+  id        String    @id @default(uuid())
+  tokenId   String    @unique
+  familyId  String
+  userId    String
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+}
+
+model IdempotencyRecord {
+  id           String   @id @default(uuid())
+  userId       String
+  key          String
+  requestHash  String
+  responseJson String?
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+  @@index([createdAt])
+}
+
+model RateLimitBucket {
+  id        String   @id @default(uuid())
+  bucketKey String   @unique
+  count     Int      @default(0)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
 }

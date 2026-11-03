@@ -1,8 +1,21 @@
 import jwt from 'jsonwebtoken';
+import { randomUUID } from 'node:crypto';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1h';
-const REFRESH_TOKEN_EXPIRES_IN = process.env.REFRESH_TOKEN_EXPIRES_IN || '7d';
+const JWT_ISSUER = 'kennedy-mega-bank-backend';
+const JWT_AUDIENCE = 'kennedy-mega-bank-api';
+const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
+export const REFRESH_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60;
+
+const getSigningSecret = (specificKey: 'JWT_ACCESS_SECRET' | 'JWT_REFRESH_SECRET'): string => {
+  const secret = process.env[specificKey] || process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error(`${specificKey} or JWT_SECRET must be configured`);
+  }
+  if (Buffer.byteLength(secret, 'utf8') < 32) {
+    throw new Error(`${specificKey} or JWT_SECRET must be at least 32 bytes`);
+  }
+  return secret;
+};
 
 /**
  * JWTPayload - Interface for JWT token payload
@@ -13,13 +26,17 @@ const REFRESH_TOKEN_EXPIRES_IN = process.env.REFRESH_TOKEN_EXPIRES_IN || '7d';
 export interface JWTPayload {
   userId: string;
   email: string;
+  tokenUse: 'access' | 'refresh';
+  tokenId?: string;
 }
+
+type JWTIdentity = Pick<JWTPayload, 'userId' | 'email'>;
 
 /**
  * TokenPair - Interface for access and refresh token pair
  *
  * This interface represents both tokens returned during authentication.
- * Access tokens are short-lived (1 hour), refresh tokens are long-lived (7 days).
+ * Access tokens are short-lived (15 minutes), refresh tokens are long-lived (7 days).
  */
 export interface TokenPair {
   accessToken: string;
@@ -33,35 +50,50 @@ export interface TokenPair {
  * JWT tokens are used for stateless authentication in the application.
  *
  * Security Note:
- * - JWT_SECRET should be a strong, random string in production
- * - Access tokens expire quickly (1 hour) to limit exposure
+ * - Signing secrets must be configured and at least 32 bytes long
+ * - Access tokens expire quickly (15 minutes) to limit exposure
  * - Refresh tokens allow session extension without re-authentication
  */
 export class JWTUtil {
+  static validateConfiguration(): void {
+    getSigningSecret('JWT_ACCESS_SECRET');
+    getSigningSecret('JWT_REFRESH_SECRET');
+  }
+
   /**
    * generateToken - Generates a short-lived access token
    *
-   * Creates a JWT token that expires in 1 hour (configurable via JWT_EXPIRES_IN).
-   * Access tokens are used for API authentication and should be refreshed periodically.
-   *
-   * @param payload - User data to include in token (userId, email)
-   * @returns string - Signed JWT access token
+   * Creates a short-lived access token for API authentication.
    */
-  static generateToken(payload: JWTPayload): string {
-    return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN } as jwt.SignOptions);
+  static generateToken(payload: JWTIdentity): string {
+    return jwt.sign(
+      { ...payload, tokenUse: 'access' },
+      getSigningSecret('JWT_ACCESS_SECRET'),
+      {
+        algorithm: 'HS256',
+        audience: JWT_AUDIENCE,
+        expiresIn: ACCESS_TOKEN_TTL_SECONDS,
+        issuer: JWT_ISSUER,
+      }
+    );
   }
 
   /**
    * generateRefreshToken - Generates a long-lived refresh token
    *
-   * Creates a JWT token that expires in 7 days (configurable via REFRESH_TOKEN_EXPIRES_IN).
-   * Refresh tokens are used to obtain new access tokens without re-authentication.
-   *
-   * @param payload - User data to include in token (userId, email)
-   * @returns string - Signed JWT refresh token
+   * Creates a refresh token that can be exchanged for a new token pair.
    */
-  static generateRefreshToken(payload: JWTPayload): string {
-    return jwt.sign(payload, JWT_SECRET, { expiresIn: REFRESH_TOKEN_EXPIRES_IN } as jwt.SignOptions);
+  static generateRefreshToken(payload: JWTIdentity): string {
+    return jwt.sign(
+      { ...payload, tokenUse: 'refresh', tokenId: randomUUID() },
+      getSigningSecret('JWT_REFRESH_SECRET'),
+      {
+        algorithm: 'HS256',
+        audience: JWT_AUDIENCE,
+        expiresIn: REFRESH_TOKEN_TTL_SECONDS,
+        issuer: JWT_ISSUER,
+      }
+    );
   }
 
   /**
@@ -73,44 +105,78 @@ export class JWTUtil {
    * @param payload - User data to include in tokens (userId, email)
    * @returns TokenPair - Object containing both access and refresh tokens
    */
-  static generateTokenPair(payload: JWTPayload): TokenPair {
+  static generateTokenPair(payload: JWTIdentity): TokenPair {
     return {
       accessToken: this.generateToken(payload),
-      refreshToken: this.generateRefreshToken(payload)
+      refreshToken: this.generateRefreshToken(payload),
     };
   }
 
   /**
-   * verifyToken - Verifies and decodes a JWT token
-   *
-   * Validates the token signature and expiration, then returns the decoded payload.
-   * Throws an error if the token is invalid or expired.
-   *
-   * @param token - JWT token to verify
-   * @returns JWTPayload - Decoded token payload
-   * @throws Error - If token is invalid or expired
+   * Verifies the token signature, expiry, issuer, audience, and intended use.
    */
-  static verifyToken(token: string): JWTPayload {
+  static verifyAccessToken(token: string): JWTPayload {
+    return this.verifyToken(token, 'access');
+  }
+
+  static verifyRefreshToken(token: string): JWTPayload {
+    return this.verifyToken(token, 'refresh');
+  }
+
+  private static verifyToken(token: string, tokenUse: JWTPayload['tokenUse']): JWTPayload {
+    const secret = getSigningSecret(tokenUse === 'access' ? 'JWT_ACCESS_SECRET' : 'JWT_REFRESH_SECRET');
+
     try {
-      return jwt.verify(token, JWT_SECRET) as JWTPayload;
-    } catch (error) {
+      const claims = jwt.verify(token, secret, {
+        algorithms: ['HS256'],
+        audience: JWT_AUDIENCE,
+        issuer: JWT_ISSUER,
+      });
+
+      if (
+        typeof claims === 'string' ||
+        typeof claims.userId !== 'string' ||
+        typeof claims.email !== 'string' ||
+        claims.tokenUse !== tokenUse ||
+        (tokenUse === 'refresh' && typeof claims.tokenId !== 'string')
+      ) {
+        throw new Error('Invalid token claims');
+      }
+
+      return {
+        userId: claims.userId,
+        email: claims.email,
+        tokenUse,
+        ...(typeof claims.tokenId === 'string' ? { tokenId: claims.tokenId } : {}),
+      };
+    } catch {
       throw new Error('Invalid or expired token');
     }
   }
 
   /**
-   * decodeToken - Decodes a JWT token without verification
-   *
-   * Decodes the token payload without verifying the signature or expiration.
-   * Useful for debugging or extracting data when verification isn't needed.
-   *
-   * @param token - JWT token to decode
-   * @returns JWTPayload | null - Decoded token payload or null if decoding fails
+   * Decodes token claims without verifying the signature; never use for authorization.
    */
   static decodeToken(token: string): JWTPayload | null {
     try {
-      return jwt.decode(token) as JWTPayload;
-    } catch (error) {
+      const claims = jwt.decode(token);
+      if (
+        typeof claims === 'string' ||
+        claims === null ||
+        typeof claims.userId !== 'string' ||
+        typeof claims.email !== 'string' ||
+        (claims.tokenUse !== 'access' && claims.tokenUse !== 'refresh') ||
+        (claims.tokenUse === 'refresh' && typeof claims.tokenId !== 'string')
+      ) {
+        return null;
+      }
+      return {
+        userId: claims.userId,
+        email: claims.email,
+        tokenUse: claims.tokenUse,
+        ...(typeof claims.tokenId === 'string' ? { tokenId: claims.tokenId } : {}),
+      };
+    } catch {
       return null;
     }
   }

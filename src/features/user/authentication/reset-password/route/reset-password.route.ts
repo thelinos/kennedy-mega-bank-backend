@@ -2,6 +2,8 @@ import express, { Router, Request, Response } from "express";
 import { getPrismaClient } from "../../../../../shared/database/prisma.ts";
 import { PasswordUtil } from "../../../../../shared/utils/password.util.ts";
 import { ValidationUtil } from "../../../../../shared/utils/validation.util.ts";
+import { authRateLimit } from "../../../../../shared/middleware/rate-limit.middleware.ts";
+import { AuthCookieUtil } from "../../../../../shared/utils/cookie.util.ts";
 import Status from "../../../../../shared/types/enums/status.enum.ts";
 
 /**
@@ -41,7 +43,7 @@ export default class ResetPassword {
     }
 
     private _resetPasswordRoute(): Router {
-        return this.router.post("/reset-password", async (req: Request<never, never, { token: string; newPassword: string }>, res: Response): Promise<void> => {
+        return this.router.post("/reset-password", authRateLimit, async (req: Request<never, never, { token: string; newPassword: string }>, res: Response): Promise<void> => {
             try {
                 const { token, newPassword } = req.body;
 
@@ -94,19 +96,22 @@ export default class ResetPassword {
 
                 const hashedPassword = await PasswordUtil.hash(newPassword);
 
-                await this.prismaClient.$transaction([
-                    this.prismaClient.user.update({
+                await this.prismaClient.$transaction(async (tx) => {
+                    await tx.user.update({
                         where: { id: resetToken.userId },
                         data: { password: hashedPassword }
-                    }),
-                    this.prismaClient.passwordResetToken.update({
+                    });
+                    await tx.passwordResetToken.update({
                         where: { id: resetToken.id },
                         data: { used: true }
-                    })
-                ]);
+                    });
+                    await tx.refreshSession.updateMany({
+                        where: { userId: resetToken.userId, revokedAt: null },
+                        data: { revokedAt: new Date() }
+                    });
+                });
 
-                res.clearCookie('accessToken');
-                res.clearCookie('refreshToken');
+                AuthCookieUtil.clearAuthCookies(res);
 
                 res.status(200).json({
                     message: "Password reset successfully. Please login with your new password.",

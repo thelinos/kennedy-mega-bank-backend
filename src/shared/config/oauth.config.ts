@@ -12,15 +12,29 @@ const prisma = getPrismaClient();
  * It will either create a new user or link the OAuth account to an existing user.
  */
 export const configureGoogleOAuth = () => {
+  if (!isGoogleOAuthConfigured()) {
+    return false;
+  }
+
+  const callbackURL = process.env.GOOGLE_CALLBACK_URL;
+  if (!callbackURL) {
+    throw new Error('GOOGLE_CALLBACK_URL is required when Google OAuth is configured');
+  }
+
   passport.use(
     new GoogleStrategy(
       {
         clientID: process.env.GOOGLE_CLIENT_ID || '',
         clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
-        callbackURL: process.env.GOOGLE_CALLBACK_URL || '/authentication/google/callback',
+        callbackURL,
       },
-      async (accessToken, refreshToken, profile, done) => {
+      async (_accessToken, _refreshToken, profile, done) => {
         try {
+          const providerEmail = profile.emails?.[0];
+          if (!providerEmail?.value || providerEmail.verified !== true) {
+            return done(new Error('Google account must provide a verified email address'));
+          }
+
           // Check if user already exists with this Google account
           const existingAccount = await prisma.oAuthAccount.findUnique({
             where: {
@@ -35,16 +49,10 @@ export const configureGoogleOAuth = () => {
           });
 
           if (existingAccount) {
-            // Update tokens if they've changed
             await prisma.oAuthAccount.update({
               where: { id: existingAccount.id },
-              data: {
-                accessToken,
-                refreshToken,
-                expiresAt: refreshToken ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) : null, // 30 days
-              },
+              data: { accessToken: null, refreshToken: null, expiresAt: null },
             });
-
             return done(null, {
               userId: existingAccount.user.id,
               email: existingAccount.user.email || '',
@@ -53,7 +61,7 @@ export const configureGoogleOAuth = () => {
 
           // Check if user exists with the same email
           const existingUser = await prisma.user.findUnique({
-            where: { email: profile.emails?.[0]?.value },
+            where: { email: providerEmail.value },
           });
 
           if (existingUser) {
@@ -63,9 +71,6 @@ export const configureGoogleOAuth = () => {
                 userId: existingUser.id,
                 provider: 'google',
                 providerId: profile.id,
-                accessToken,
-                refreshToken,
-                expiresAt: refreshToken ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) : null,
               },
             });
 
@@ -78,9 +83,9 @@ export const configureGoogleOAuth = () => {
           // Create new user
           const newUser = await prisma.user.create({
             data: {
-              email: profile.emails?.[0]?.value || null,
+              email: providerEmail.value,
               name: profile.displayName || null,
-              emailVerified: profile.emails?.[0]?.verified || false,
+              emailVerified: true,
               password: null, // OAuth users don't need password
             },
           });
@@ -91,9 +96,6 @@ export const configureGoogleOAuth = () => {
               userId: newUser.id,
               provider: 'google',
               providerId: profile.id,
-              accessToken,
-              refreshToken,
-              expiresAt: refreshToken ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) : null,
             },
           });
 
@@ -102,7 +104,7 @@ export const configureGoogleOAuth = () => {
             email: newUser.email || '',
           });
         } catch (error) {
-          return done(error as Error);
+          return done(error instanceof Error ? error : new Error('Google authentication failed'));
         }
       }
     )
@@ -135,6 +137,54 @@ export const configureGoogleOAuth = () => {
       done(error);
     }
   });
+
+  return true;
+};
+
+export const isGoogleOAuthConfigured = (): boolean => {
+  const hasClientId = Boolean(process.env.GOOGLE_CLIENT_ID);
+  const hasClientSecret = Boolean(process.env.GOOGLE_CLIENT_SECRET);
+  if (!hasClientId && !hasClientSecret) {
+    return false;
+  }
+  if (!hasClientId || !hasClientSecret) {
+    throw new Error('GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be configured together');
+  }
+  const callbackURL = process.env.GOOGLE_CALLBACK_URL;
+  const frontendURL = process.env.FRONTEND_URL;
+  if (!callbackURL || !frontendURL) {
+    throw new Error('GOOGLE_CALLBACK_URL and FRONTEND_URL are required when Google OAuth is configured');
+  }
+
+  const callback = parseWebUrl(callbackURL);
+  const frontend = parseWebUrl(frontendURL);
+  if (!callback || !frontend) {
+    throw new Error('Google OAuth callback and frontend URLs must be absolute HTTP(S) URLs');
+  }
+  if (
+    (process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'staging') &&
+    (callback.protocol !== 'https:' || frontend.protocol !== 'https:')
+  ) {
+    throw new Error('Google OAuth callback and frontend URLs must use HTTPS in staging and production');
+  }
+
+  return true;
+};
+
+const parseWebUrl = (value: string): URL | null => {
+  try {
+    const url = new URL(value);
+    if (
+      (url.protocol !== 'http:' && url.protocol !== 'https:') ||
+      url.username.length > 0 ||
+      url.password.length > 0
+    ) {
+      return null;
+    }
+    return url;
+  } catch {
+    return null;
+  }
 };
 
 export default passport;

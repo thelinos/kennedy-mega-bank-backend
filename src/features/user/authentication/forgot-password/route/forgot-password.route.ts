@@ -3,6 +3,7 @@ import { getPrismaClient } from "../../../../../shared/database/prisma.ts";
 import { SendGridService } from "../../../../../shared/services/email/sendgrid.service.ts";
 import { TokenUtil } from "../../../../../shared/utils/token.util.ts";
 import { ValidationUtil } from "../../../../../shared/utils/validation.util.ts";
+import { authRateLimit } from "../../../../../shared/middleware/rate-limit.middleware.ts";
 import Status from "../../../../../shared/types/enums/status.enum.ts";
 
 /**
@@ -38,7 +39,7 @@ export class ForgotPassword {
     }
 
     private get _forgotPasswordRoute(): Router {
-        return this.router.post("/forgot-password", async (req: Request<never, never, { email: string }>, res: Response): Promise<void> => {
+        return this.router.post("/forgot-password", authRateLimit, async (req: Request<never, never, { email: string }>, res: Response): Promise<void> => {
             try {
                 const { email } = req.body;
 
@@ -57,7 +58,7 @@ export class ForgotPassword {
                 });
 
                 if (!user) {
-                    res.status(404).json({
+                    res.status(200).json({
                         message: "If an account exists with this email, a password reset link has been sent",
                         status: Status.successful
                     });

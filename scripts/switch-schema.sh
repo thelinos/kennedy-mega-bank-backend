@@ -1,32 +1,20 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-# Script to switch Prisma schema based on environment
-# Usage: ./scripts/switch-schema.sh [development|staging|production]
+environment="${1:-}"
 
-ENV=$1
-
-if [ -z "$ENV" ]; then
-  echo "Usage: ./scripts/switch-schema.sh [development|staging|production]"
-  exit 1
-fi
-
-# Backup current schema
-cp prisma/schema.prisma prisma/schema.prisma.backup
-
-# Switch schema based on environment
-case $ENV in
+case "$environment" in
   development)
-    echo "Switching to SQLite schema for development..."
-    cp prisma/schema.sqlite.prisma prisma/schema.prisma
+    schema="prisma/schema.prisma"
     ;;
   staging|production)
-    echo "Switching to MongoDB schema for $ENV..."
-    cp prisma/schema.mongodb.prisma prisma/schema.prisma
+    schema="prisma/postgresql/schema.prisma"
     ;;
   *)
-    echo "Invalid environment: $ENV"
+    echo "Usage: $0 [development|staging|production]" >&2
     exit 1
     ;;
 esac
 
-echo "Schema switched. Run 'npm run prisma:generate' to regenerate Prisma client."
+echo "Generating Prisma client for $environment from $schema..."
+npx prisma generate --schema "$schema"

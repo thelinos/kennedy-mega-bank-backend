@@ -3,8 +3,11 @@ import { Express } from "express"
 import { DatabaseConfig } from "../database/config.ts";
 import { requestLogger } from "../middleware/requestLogger.ts";
 import { errorHandler } from "../middleware/errorHandler.ts";
+import { JWTUtil } from "../utils/jwt.util.ts";
 import AppRegistry from "./app-registry.ts";
 import passport, { configureGoogleOAuth } from "../config/oauth.config.ts";
+import { CreateAccount } from "../../features/account/index.ts";
+import { CreateTransaction } from "../../features/transaction/index.ts";
 import { CreateUser, ForgotPassword, GoogleOAuth, PhoneAuth, Me, ResetPassword, Refresh, Logout, Login, VerifyUser } from "../../features/user/authentication/index.ts";
 import { CollectName, CollectProfilePicture, UpdateName, UpdateProfilePicture } from "../../features/user/account_details/index.ts";
 
@@ -22,7 +25,7 @@ import { CollectName, CollectProfilePicture, UpdateName, UpdateProfilePicture } 
  * Express instance exists per application, allowing centralized management of
  * routes and middleware across the application.
  *
- * @constructor Takes DatabaseConfig containing Prisma and MongoDB connections
+ * @constructor Takes the active Prisma database configuration
  */
 export class App {
   constructor(private databases: DatabaseConfig) { }
@@ -45,6 +48,7 @@ export class App {
 
     // Initialize the app with databases if not already initialized
     if (!registry.isInitialized()) {
+      JWTUtil.validateConfiguration();
       await registry.initialize(this.databases);
 
       // Configure Google OAuth (must be called after env vars are loaded)
@@ -83,9 +87,15 @@ export class App {
       registry.registerRoute("/account-details", new UpdateName().updateNameRoute);
       registry.registerRoute("/account-details", new UpdateProfilePicture().updateProfilePictureRoute);
 
+      registry.registerRoute("/accounts", new CreateAccount().createAccountRoute);
+      registry.registerRoute("/transactions", new CreateTransaction().createTransactionRoute);
+
       // Register health check endpoint
       app.get('/health', (_req, res) => {
-        const dbType = this.databases.prisma ? 'SQLite (Prisma)' : 'MongoDB';
+        const databaseUrl = process.env.DATABASE_URL || '';
+        const dbType = databaseUrl.startsWith('postgresql://') || databaseUrl.startsWith('postgres://')
+          ? 'PostgreSQL'
+          : 'SQLite';
         res.json({
           status: 'ok',
           environment: process.env.NODE_ENV,

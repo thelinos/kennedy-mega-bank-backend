@@ -8,38 +8,42 @@ This directory contains utility classes for common operations.
 JWT token generation and validation utility.
 
 **Purpose:**
-- Generate JWT access tokens
-- Generate JWT refresh tokens
-- Generate token pairs
+- Generate short-lived JWT access tokens
+- Generate JWT refresh tokens with token identifiers
 - Verify JWT tokens
 - Decode JWT tokens
 
 **Key Methods:**
-- `generateToken(payload)` - Generate 1-hour access token
+- `generateToken(payload)` - Generate 15-minute access token
 - `generateRefreshToken(payload)` - Generate 7-day refresh token
 - `generateTokenPair(payload)` - Generate both tokens
-- `verifyToken(token)` - Verify and decode token
+- `verifyAccessToken(token)` - Verify an access token
+- `verifyRefreshToken(token)` - Verify a refresh token
 - `decodeToken(token)` - Decode without verification
 
 **Configuration:**
 Environment variables:
 ```bash
-JWT_SECRET="your-secret-key"
-JWT_EXPIRES_IN="1h"
-REFRESH_TOKEN_EXPIRES_IN="7d"
+# Generate a random secret with: openssl rand -base64 48
+JWT_SECRET=""
 ```
 
 **Usage:**
 ```typescript
-import { JWTUtil } from './jwt.util.js';
+import { AuthSessionUtil } from './auth-session.util.js';
 
-const { accessToken, refreshToken } = JWTUtil.generateTokenPair({
+const { accessToken, refreshToken } = await AuthSessionUtil.issueTokenPair({
   userId: user.id,
   email: user.email
 });
-
-const payload = JWTUtil.verifyToken(accessToken);
 ```
+Use `JWTUtil.generateTokenPair()` only when a caller intentionally does not need
+a persisted refresh session (for example, isolated signing tests).
+
+### money.util.ts
+Parses and formats integer minor units using each supported ISO 4217 currency's
+precision. Account creation defaults to USD; transaction responses include the
+currency code and do not perform currency conversion.
 
 ### password.util.ts
 Password hashing and validation utility.

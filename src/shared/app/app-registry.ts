@@ -1,5 +1,7 @@
 import express, { Express, Router, RequestHandler, ErrorRequestHandler } from "express";
 import { DatabaseConfig } from "../database/config.ts";
+import { getAllowedOrigins } from "../config/security.config.ts";
+import { createCookieCsrfMiddleware } from "../middleware/csrf.middleware.ts";
 
 /**
  * AppRegistry - Singleton service for managing the Express application instance
@@ -34,8 +36,20 @@ class AppRegistry {
       return this.app;
     }
 
+    const trustProxyHops = process.env.TRUST_PROXY_HOPS;
+    let trustedHops: number | undefined;
+    if (trustProxyHops !== undefined && trustProxyHops !== '') {
+      trustedHops = Number(trustProxyHops);
+      if (!Number.isSafeInteger(trustedHops) || trustedHops < 1) {
+        throw new Error('TRUST_PROXY_HOPS must be a positive integer');
+      }
+    }
+
     this.databases = databases;
     this.app = express();
+    if (trustedHops !== undefined) {
+      this.app.set('trust proxy', trustedHops);
+    }
 
     // Configure default middleware
     this.app.use(express.json());
@@ -44,12 +58,16 @@ class AppRegistry {
     // Initialize cookie-parser and cors
     const cookieParser = await import('cookie-parser');
     const cors = await import('cors');
+    const allowedOrigins = getAllowedOrigins();
 
     this.app.use(cookieParser.default());
     this.app.use(cors.default({
-      origin: process.env.CORS_ORIGIN || '*',
-      credentials: true
+      origin: (origin, callback) => {
+        callback(null, !origin || allowedOrigins.includes(origin));
+      },
+      credentials: true,
     }));
+    this.app.use(createCookieCsrfMiddleware(allowedOrigins));
 
     return this.app;
   }

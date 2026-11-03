@@ -41,7 +41,7 @@ Following the established pattern:
 
 ### 6. **JWT Token Generation**
 **Why generate on signup?** To authenticate immediately without requiring login.
-- Generate access token (1 hour) and refresh token (7 days)
+- Generate access token (15 minutes) and refresh token (7 days)
 - Set as HTTP-only cookies (secure, httpOnly, sameSite=strict)
 - Use environment variable to determine secure flag (production only)
 

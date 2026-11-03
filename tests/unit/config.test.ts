@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { loadEnv, getEnvConfig } from '../../src/shared/config/index.js';
+import { assertDatabaseProvider, loadEnv, getEnvConfig } from '../../src/shared/config/index.js';
 
 describe('Shared Config - Unit Tests', () => {
   beforeEach(() => {
@@ -30,8 +30,7 @@ describe('Shared Config - Unit Tests', () => {
       expect(config).toHaveProperty('nodeEnv');
       expect(config).toHaveProperty('port');
       expect(config).toHaveProperty('databaseUrl');
-      expect(config).toHaveProperty('mongoUri');
-      expect(config).toHaveProperty('mongoDbName');
+      expect(config).not.toHaveProperty('mongoUri');
     });
 
     it('should parse port as number', () => {
@@ -44,6 +43,15 @@ describe('Shared Config - Unit Tests', () => {
       delete process.env.NODE_ENV;
       const config = getEnvConfig();
       expect(['development', 'staging', 'production']).toContain(config.nodeEnv);
+    });
+
+    describe('assertDatabaseProvider', () => {
+      it('requires SQLite for development and PostgreSQL for staging/production', () => {
+        expect(() => assertDatabaseProvider('file:./dev.db', 'sqlite')).not.toThrow();
+        expect(() => assertDatabaseProvider('postgresql://db.example/bank', 'postgresql')).not.toThrow();
+        expect(() => assertDatabaseProvider('file:./dev.db', 'postgresql')).toThrow('must use the postgresql provider');
+        expect(() => assertDatabaseProvider('postgresql://db.example/bank', 'sqlite')).toThrow('must use the sqlite provider');
+      });
     });
   });
 });

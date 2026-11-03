@@ -2,7 +2,9 @@ import express, { Request, Response, Router } from "express";
 import { getPrismaClient } from "../../../../../shared/database/prisma.ts";
 import Status from "../../../../../shared/types/enums/status.enum.ts";
 import { CreatedUser, CreateUserRequestBody, EmailValidationError, ServerError } from "../../../../../shared/types/model/data_types.ts";
-import { JWTUtil } from "../../../../../shared/utils/jwt.util.ts";
+import { AuthSessionUtil } from "../../../../../shared/utils/auth-session.util.ts";
+import { AuthCookieUtil } from "../../../../../shared/utils/cookie.util.ts";
+import { authRateLimit } from "../../../../../shared/middleware/rate-limit.middleware.ts";
 import { PasswordUtil } from "../../../../../shared/utils/password.util.ts";
 import { ValidationUtil } from "../../../../../shared/utils/validation.util.ts";
 
@@ -71,25 +73,11 @@ export class CreateUser {
                 }
             });
 
-            const { accessToken, refreshToken } = JWTUtil.generateTokenPair({
+            const tokens = await AuthSessionUtil.issueTokenPair({
                 userId: newUser.id,
                 email: newUser.email || ''
             });
-
-            const isProduction = process.env.NODE_ENV === 'production';
-            res.cookie('accessToken', accessToken, {
-                httpOnly: true,
-                secure: isProduction,
-                sameSite: 'strict',
-                maxAge: 60 * 60 * 1000
-            });
-
-            res.cookie('refreshToken', refreshToken, {
-                httpOnly: true,
-                secure: isProduction,
-                sameSite: 'strict',
-                maxAge: 7 * 24 * 60 * 60 * 1000
-            });
+            AuthCookieUtil.setAuthCookies(res, tokens);
 
             const { password: _, ...userWithoutPassword } = newUser;
 
@@ -121,7 +109,7 @@ export class CreateUser {
     }
 
     private get _createUserRoute(): Router {
-        return this.router.post("/create-user", this._createUserRouteController.bind(this));
+        return this.router.post("/create-user", authRateLimit, this._createUserRouteController.bind(this));
     }
 
     public get createUserRoute(): Router {

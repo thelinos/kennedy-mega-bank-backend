@@ -1,0 +1,159 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                  String                @id @default(uuid())
+  email               String?               @unique
+  password            String?
+  phoneNumber         String?               @unique
+  name                String?
+  emailVerified       Boolean               @default(false)
+  phoneVerified       Boolean               @default(false)
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  accounts            Account[]
+  emailTokens         EmailToken[]
+  passwordResetTokens PasswordResetToken[]
+  userCredential      UserCredential?
+  oauthAccounts       OAuthAccount[]
+  phoneVerifications  PhoneVerification[]
+  refreshSessions     RefreshSession[]
+  idempotencyRecords  IdempotencyRecord[]
+}
+
+model UserCredential {
+  id             String   @id @default(uuid())
+  userId         String   @unique
+  firstName      String?
+  middleName     String?
+  surname        String?
+  profilePicture String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  user           User     @relation(fields: [userId], references: [id])
+}
+
+model Account {
+  id           String        @id @default(uuid())
+  userId       String
+  accountType  String
+  balanceMinorUnits BigInt   @default(0)
+  currency    String         @default("USD")
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  user         User          @relation(fields: [userId], references: [id])
+  transactions Transaction[]
+
+  @@index([userId])
+}
+
+model Transaction {
+  id          String   @id @default(uuid())
+  accountId   String
+  amountMinorUnits BigInt   @default(0)
+  type        String
+  description String?
+  createdAt   DateTime @default(now())
+  account     Account  @relation(fields: [accountId], references: [id])
+
+  @@index([accountId])
+}
+
+model EmailToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([token])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model OAuthAccount {
+  id           String   @id @default(uuid())
+  userId       String
+  provider     String
+  providerId   String
+  accessToken  String?
+  refreshToken String?
+  expiresAt    DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id])
+
+  @@unique([provider, providerId])
+  @@index([userId])
+}
+
+model PhoneVerification {
+  id          String   @id @default(uuid())
+  userId      String?
+  phoneNumber String
+  otp         String
+  expiresAt   DateTime
+  verified    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  user        User?    @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([phoneNumber])
+  @@index([otp])
+}
+
+model RefreshSession {
+  id        String    @id @default(uuid())
+  tokenId   String    @unique
+  familyId  String
+  userId    String
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+}
+
+model IdempotencyRecord {
+  id           String   @id @default(uuid())
+  userId       String
+  key          String
+  requestHash  String
+  responseJson String?
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+  @@index([createdAt])
+}
+
+model RateLimitBucket {
+  id        String   @id @default(uuid())
+  bucketKey String   @unique
+  count     Int      @default(0)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
+}

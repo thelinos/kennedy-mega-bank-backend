@@ -41,7 +41,7 @@ declare global {
  */
 export const authenticate = (req: Request, res: Response, next: NextFunction): void => {
   try {
-    const token = req.cookies.accessToken;
+    const token = req.cookies?.accessToken;
 
     if (!token) {
       res.status(401).json({
@@ -51,7 +51,7 @@ export const authenticate = (req: Request, res: Response, next: NextFunction): v
       return;
     }
 
-    const payload = JWTUtil.verifyToken(token);
+    const payload = JWTUtil.verifyAccessToken(token);
     req.user = payload;
     next();
   } catch (error) {
@@ -85,10 +85,10 @@ export const authenticate = (req: Request, res: Response, next: NextFunction): v
  */
 export const optionalAuth = (req: Request, res: Response, next: NextFunction): void => {
   try {
-    const token = req.cookies.accessToken;
+    const token = req.cookies?.accessToken;
 
     if (token) {
-      const payload = JWTUtil.verifyToken(token);
+      const payload = JWTUtil.verifyAccessToken(token);
       req.user = payload;
     }
     next();

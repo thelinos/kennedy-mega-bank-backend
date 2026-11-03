@@ -2,7 +2,9 @@ import express, { Request, Response, Router } from "express";
 import { getPrismaClient } from "../../../../../shared/database/prisma.ts";
 import Status from "../../../../../shared/types/enums/status.enum.ts";
 import { EmailValidationError, LoggedInUser, PasswordValidationError } from "../../../../../shared/types/model/data_types.ts";
-import { JWTUtil } from "../../../../../shared/utils/jwt.util.ts";
+import { AuthCookieUtil } from "../../../../../shared/utils/cookie.util.ts";
+import { AuthSessionUtil } from "../../../../../shared/utils/auth-session.util.ts";
+import { authRateLimit } from "../../../../../shared/middleware/rate-limit.middleware.ts";
 import { PasswordUtil } from "../../../../../shared/utils/password.util.ts";
 import { ValidationUtil } from "../../../../../shared/utils/validation.util.ts";
 
@@ -27,7 +29,7 @@ interface LoginRequestBody {
  * - Same error message for "user not found" and "wrong password" (prevents email enumeration)
  * - Password is never returned in response
  * - Cookies are httpOnly, secure (in production), and sameSite=strict
- * - Access token expires in 1 hour, refresh token in 7 days
+ * - Access token expires in 15 minutes, refresh token in 7 days
  *
  * @route POST /authentication/login
  * @body { email: string, password: string }
@@ -89,25 +91,11 @@ export default class Login {
                 return;
             }
 
-            const { accessToken, refreshToken } = JWTUtil.generateTokenPair({
+            const tokens = await AuthSessionUtil.issueTokenPair({
                 userId: user.id,
                 email: user.email || ''
             });
-
-            const isProduction = process.env.NODE_ENV === 'production';
-            res.cookie('accessToken', accessToken, {
-                httpOnly: true,
-                secure: isProduction,
-                sameSite: 'strict',
-                maxAge: 60 * 60 * 1000
-            });
-
-            res.cookie('refreshToken', refreshToken, {
-                httpOnly: true,
-                secure: isProduction,
-                sameSite: 'strict',
-                maxAge: 7 * 24 * 60 * 60 * 1000
-            });
+            AuthCookieUtil.setAuthCookies(res, tokens);
 
             const { password: _, ...userWithoutPassword } = user;
 
@@ -130,7 +118,7 @@ export default class Login {
     }
 
     private get _loginRoute(): Router {
-        return this.router.post("/login", this._loginRouteController.bind(this));
+        return this.router.post("/login", authRateLimit, this._loginRouteController.bind(this));
     }
 
     public get loginRoute(): Router {

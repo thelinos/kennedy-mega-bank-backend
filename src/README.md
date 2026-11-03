@@ -26,7 +26,7 @@ src/
 └── shared/              # Shared code across features
     ├── app/             # Application configuration
     ├── config/          # Environment configuration
-    ├── database/        # Database connections
+    ├── database/        # Prisma database connections
     ├── middleware/      # Express middleware
     ├── services/        # External service integrations
     ├── types/           # Type definitions
@@ -48,7 +48,7 @@ route handlers, services, and utilities specific to that domain.
 ### shared/
 Code shared across multiple features and environments. This includes:
 - Application setup (Express configuration)
-- Database connections (Prisma, MongoDB)
+- Database connections (SQLite locally, PostgreSQL in staging/production)
 - Middleware (authentication, logging, error handling)
 - Services (SendGrid email)
 - Types (enums, models)

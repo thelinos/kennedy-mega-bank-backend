@@ -33,8 +33,6 @@ Environment variable loading and configuration extraction.
   nodeEnv: string;
   port: number;
   databaseUrl: string;
-  mongoUri: string;
-  mongoDbName: string;
 }
 ```
 
@@ -53,13 +51,7 @@ console.log(config.port); // 3000
 ```bash
 NODE_ENV="development" | "staging" | "production"
 PORT=3000
-DATABASE_URL="file:./dev.db" | "mongodb://..."
-```
-
-### Optional Variables
-```bash
-MONGODB_URI="mongodb://localhost:27017"
-MONGODB_DB_NAME="kennedy-mega-bank"
+DATABASE_URL="file:./dev.db" | "postgresql://USER:PASSWORD@HOST:5432/DB?schema=public"
 ```
 
 ### SendGrid Variables
@@ -71,14 +63,16 @@ SENDGRID_FROM_NAME="Kennedy Mega Bank"
 
 ### JWT Variables
 ```bash
-JWT_SECRET="your-secret-key"
-JWT_EXPIRES_IN="1h"
-REFRESH_TOKEN_EXPIRES_IN="7d"
+# Generate a random secret with: openssl rand -base64 48
+JWT_SECRET=""
+# Optional separate keys; each must be at least 32 bytes.
+JWT_ACCESS_SECRET=""
+JWT_REFRESH_SECRET=""
 ```
 
 ### CORS Variables
 ```bash
-CORS_ORIGIN="*" | "https://yourdomain.com"
+CORS_ORIGINS="https://app.example.com,https://admin.example.com"
 ```
 
 ### Base URL
@@ -95,7 +89,14 @@ BASE_URL="http://localhost:3000" | "https://api.yourdomain.com"
 ## Security Best Practices
 
 1. **Never commit .env files** - Add to .gitignore
-2. **Use strong secrets** - JWT_SECRET should be cryptographically random
+2. **Use strong secrets** - configure a cryptographically random JWT secret of at least 32 bytes
 3. **Environment-specific configs** - Different keys for each environment
 4. **Use environment variables** - Don't hardcode sensitive data
 5. **Document required variables** - Update .env.example
+
+Cookie-authenticated state-changing requests must include an `Origin` matching
+one of the configured CORS origins. Wildcard origins are rejected when cookies
+and credentials are enabled.
+
+The test suite always uses the ignored `tests/test.db` SQLite database and
+applies migrations before test workers start. It never uses `prisma/dev.db`.

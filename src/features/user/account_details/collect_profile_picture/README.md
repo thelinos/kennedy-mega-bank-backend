@@ -115,8 +115,12 @@ if (!req.file) {
 
 ### 5. **Storage Strategy**
 
-**Option A: MongoDB GridFS (Recommended for your project)**
-Since your project uses MongoDB in staging/production:
+**Option A: Cloud object storage (recommended for production)**
+Staging and production use PostgreSQL. Profile pictures are not currently
+backed by an active storage provider; choose an object-storage service before
+implementing uploads. The old MongoDB GridFS examples below are not supported
+by the current application and should not be used without reintroducing and
+reviewing that integration:
 
 ```typescript
 import { GridFSBucket } from 'mongodb';

@@ -83,7 +83,7 @@ All responses follow this structure:
 ### 4. Refresh Token (`/authentication/refresh`)
 - **Method**: POST
 - **Purpose**: Refresh JWT tokens
-- **Features**: Token rotation, session extension
+- **Features**: Persisted token rotation, replay detection, family revocation
 - **Folder**: `refresh/`
 
 ### 5. Forgot Password (`/authentication/forgot-password`)
@@ -128,9 +128,14 @@ All responses follow this structure:
 - Use httpOnly cookies (prevents XSS)
 - Use secure flag in production (HTTPS only)
 - Use sameSite=strict (prevents CSRF)
-- Access tokens expire in 1 hour
+- Access tokens expire in 15 minutes
 - Refresh tokens expire in 7 days
-- Implement token rotation (new refresh token on each refresh)
+- Refresh tokens are stored as persisted sessions and rotated on use
+- Replaying a rotated refresh token revokes its session family
+- Logout and password reset revoke persisted refresh sessions
+- OAuth initiation uses a short-lived, cookie-bound state value
+- Authentication, account, and transaction routes use shared database-backed
+  rate-limit buckets
 
 ### Input Validation
 - Validate all inputs before processing
@@ -164,8 +169,11 @@ All responses follow this structure:
 ### JWTUtil
 - `generateToken(payload)` - Generate access token
 - `generateRefreshToken(payload)` - Generate refresh token
-- `generateTokenPair(payload)` - Generate both tokens
-- `verifyToken(token)` - Verify and decode token
+- `generateTokenPair(payload)` - Generate both signed tokens
+- `verifyAccessToken(token)` - Verify an access token
+- `verifyRefreshToken(token)` - Verify a refresh token
+- Use `AuthSessionUtil.issueTokenPair()` for user sessions so the refresh
+  token is also persisted
 
 ### TokenUtil
 - `generateVerificationToken()` - Generate 64-char hex token
@@ -271,7 +279,7 @@ Use the example curl commands in each route's README for manual testing.
 Based on the API implementation plan, the next phases are:
 - **Phase 3**: Account Management APIs
 - **Phase 4**: Transaction APIs
-- **Phase 5**: Avatar/Profile APIs (MongoDB)
+- **Phase 5**: Avatar/Profile APIs (object storage integration not yet configured)
 - **Phase 6**: Infrastructure & Testing
 
 Follow the same patterns established here when implementing these routes.

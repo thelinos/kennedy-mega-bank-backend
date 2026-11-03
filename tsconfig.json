@@ -3,7 +3,8 @@
     "target": "ES2022",
     "module": "nodenext",
     "lib": [
-      "ES2022"
+      "ES2022",
+      "ES2022.Intl"
     ],
     "moduleResolution": "nodenext",
     "rootDir": ".",
@@ -20,14 +21,14 @@
     "noUnusedParameters": false,
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
-    "allowJs": true,
+    "allowJs": false,
     "allowImportingTsExtensions": true,
     "rewriteRelativeImportExtensions": true,
     "noImplicitAny": true
   },
   "include": [
-    "src/**/*",
-    "tests/**/*"
+    "src/**/*.ts",
+    "tests/**/*.ts"
   ],
   "exclude": [
     "node_modules",

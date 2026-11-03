@@ -1,5 +1,5 @@
 import { App } from '../../shared/app/app.ts';
-import { loadEnv, getEnvConfig } from '../../shared/config/index.ts';
+import { assertDatabaseProvider, loadEnv, getEnvConfig } from '../../shared/config/index.ts';
 import { connectPrismaOnly, disconnectAllDatabases } from '../../shared/database/config.ts';
 
 
@@ -9,6 +9,7 @@ const config = getEnvConfig();
 
 const startServer = async () => {
   try {
+    assertDatabaseProvider(config.databaseUrl, 'sqlite');
     const databases = await connectPrismaOnly();
     const appInstance = new App(databases);
     const app = await appInstance.app();

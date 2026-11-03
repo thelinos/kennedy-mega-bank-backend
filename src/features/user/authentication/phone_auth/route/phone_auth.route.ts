@@ -1,8 +1,10 @@
 import express, { Request, Response, Router } from "express";
 import { getPrismaClient } from "../../../../../shared/database/prisma.ts";
 import { generateOTP, sendOTP, validatePhoneNumber } from "../../../../../shared/utils/twilio.util.ts";
-import { JWTUtil } from "../../../../../shared/utils/jwt.util.ts";
+import { AuthCookieUtil } from "../../../../../shared/utils/cookie.util.ts";
+import { AuthSessionUtil } from "../../../../../shared/utils/auth-session.util.ts";
 import Status from "../../../../../shared/types/enums/status.enum.ts";
+import { authRateLimit } from "../../../../../shared/middleware/rate-limit.middleware.ts";
 
 interface SendOTPRequestBody {
   phoneNumber: string;
@@ -159,26 +161,11 @@ export class PhoneAuth {
 
       const { password: _, ...userWithoutPassword } = user;
 
-      // Generate JWT tokens for authenticated session
-      const { accessToken, refreshToken } = JWTUtil.generateTokenPair({
+      const tokens = await AuthSessionUtil.issueTokenPair({
         userId: user.id,
         email: user.email || ''
       });
-
-      const isProduction = process.env.NODE_ENV === 'production';
-      res.cookie('accessToken', accessToken, {
-        httpOnly: true,
-        secure: isProduction,
-        sameSite: 'strict',
-        maxAge: 60 * 60 * 1000 // 1 hour
-      });
-
-      res.cookie('refreshToken', refreshToken, {
-        httpOnly: true,
-        secure: isProduction,
-        sameSite: 'strict',
-        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
-      });
+      AuthCookieUtil.setAuthCookies(res, tokens);
 
       res.status(200).json({
         message: "Phone verified successfully",
@@ -195,11 +182,11 @@ export class PhoneAuth {
   }
 
   private get _sendOTPRoute(): Router {
-    return this.router.post("/phone/send-otp", this._sendOTPController.bind(this));
+    return this.router.post("/phone/send-otp", authRateLimit, this._sendOTPController.bind(this));
   }
 
   private get _verifyOTPRoute(): Router {
-    return this.router.post("/phone/verify-otp", this._verifyOTPController.bind(this));
+    return this.router.post("/phone/verify-otp", authRateLimit, this._verifyOTPController.bind(this));
   }
 
   public get sendOTPRoute(): Router {

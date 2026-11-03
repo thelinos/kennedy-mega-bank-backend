@@ -20,7 +20,7 @@ export const createTestAccount = async (
     data: {
       userId,
       accountType: 'checking',
-      balance: 1000.0,
+      balanceMinorUnits: 100000n,
       ...overrides,
     },
   });
@@ -34,7 +34,7 @@ export const createTestTransaction = async (
   return prisma.transaction.create({
     data: {
       accountId,
-      amount: 100.0,
+      amountMinorUnits: 10000n,
       type: 'deposit',
       description: 'Test transaction',
       ...overrides,
@@ -52,6 +52,14 @@ export const createFullTestDataset = async (prisma: PrismaClient) => {
 
 export const cleanupTestData = async (prisma: PrismaClient) => {
   await prisma.transaction.deleteMany();
+  await prisma.idempotencyRecord.deleteMany();
+  await prisma.rateLimitBucket.deleteMany();
   await prisma.account.deleteMany();
+  await prisma.refreshSession.deleteMany();
+  await prisma.emailToken.deleteMany();
+  await prisma.passwordResetToken.deleteMany();
+  await prisma.oAuthAccount.deleteMany();
+  await prisma.phoneVerification.deleteMany();
+  await prisma.userCredential.deleteMany();
   await prisma.user.deleteMany();
 };

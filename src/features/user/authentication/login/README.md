@@ -38,12 +38,12 @@ Following the established pattern:
 - **Security**: Don't reveal whether email exists or password is wrong
 
 ### 6. **JWT Token Generation**
-- Generate access token (1 hour) and refresh token (7 days)
+- Generate access token (15 minutes) and refresh token (7 days)
 - Use user ID and email as payload
 - Tokens are cryptographically signed with JWT_SECRET
 
 ### 7. **Cookie Setting**
-- Set accessToken cookie (1 hour expiration)
+- Set accessToken cookie (15 minute expiration)
 - Set refreshToken cookie (7 days expiration)
 - Options: httpOnly, secure (production), sameSite=strict
 - **Why cookies?** More secure than localStorage (httpOnly prevents XSS)
@@ -73,7 +73,7 @@ Following the established pattern:
 - Cookies are httpOnly (prevents XSS)
 - Cookies are secure in production (HTTPS only)
 - Cookies have sameSite=strict (prevents CSRF)
-- Access token expires in 1 hour (limits exposure)
+- Access token expires in 15 minutes (limits exposure)
 - Refresh token allows session extension without re-login
 - Password never returned in response
 
@@ -83,7 +83,7 @@ To add features to this route:
 
 1. **Two-factor authentication**: Add TOTP verification step after password check
 2. **Account lockout**: Track failed attempts and lock after N tries
-3. **IP-based rate limiting**: Add rate limiting middleware
+3. **IP-based rate limiting**: Shared database-backed limits are enabled
 4. **Device fingerprinting**: Store device info and warn on new device
 5. **Remember me**: Extend refresh token expiration based on user preference
 
@@ -114,5 +114,5 @@ Response:
 ```
 
 Cookies set:
-- `accessToken` (httpOnly, secure, 1 hour)
+- `accessToken` (httpOnly, secure, 15 minutes)
 - `refreshToken` (httpOnly, secure, 7 days)

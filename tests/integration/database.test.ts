@@ -46,13 +46,13 @@ describe('Database Integration Tests', () => {
         data: {
           userId: user.id,
           accountType: 'checking',
-          balance: 1000.0,
+          balanceMinorUnits: 100000n,
         },
       });
 
       expect(account).toHaveProperty('id');
       expect(account.userId).toBe(user.id);
-      expect(account.balance).toBe(1000.0);
+      expect(account.balanceMinorUnits).toBe(100000n);
     });
 
     it('should create a transaction for an account', async () => {
@@ -67,14 +67,14 @@ describe('Database Integration Tests', () => {
         data: {
           userId: user.id,
           accountType: 'checking',
-          balance: 1000.0,
+          balanceMinorUnits: 100000n,
         },
       });
 
       const transaction = await prisma.transaction.create({
         data: {
           accountId: account.id,
-          amount: 100.0,
+          amountMinorUnits: 10000n,
           type: 'deposit',
           description: 'Test deposit',
         },
@@ -82,7 +82,7 @@ describe('Database Integration Tests', () => {
 
       expect(transaction).toHaveProperty('id');
       expect(transaction.accountId).toBe(account.id);
-      expect(transaction.amount).toBe(100.0);
+      expect(transaction.amountMinorUnits).toBe(10000n);
     });
 
     it('should query user with accounts', async () => {
@@ -94,11 +94,11 @@ describe('Database Integration Tests', () => {
             create: [
               {
                 accountType: 'checking',
-                balance: 1000.0,
+                balanceMinorUnits: 100000n,
               },
               {
                 accountType: 'savings',
-                balance: 5000.0,
+                balanceMinorUnits: 500000n,
               },
             ],
           },

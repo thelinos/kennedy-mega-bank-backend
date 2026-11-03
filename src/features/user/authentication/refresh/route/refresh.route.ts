@@ -1,32 +1,12 @@
 import express, { Router, Request, Response } from "express";
-import { JWTUtil } from "../../../../../shared/utils/jwt.util.ts";
+import { AuthSessionUtil } from "../../../../../shared/utils/auth-session.util.ts";
+import { AuthCookieUtil } from "../../../../../shared/utils/cookie.util.ts";
+import { JWTPayload, JWTUtil } from "../../../../../shared/utils/jwt.util.ts";
 import { getPrismaClient } from "../../../../../shared/database/prisma.ts";
 import Status from "../../../../../shared/types/enums/status.enum.ts";
+import { authRateLimit } from "../../../../../shared/middleware/rate-limit.middleware.ts";
 
-/**
- * Refresh - Handles JWT token refresh
- *
- * This route implements token refresh using a refresh token:
- * - Extracts refresh token from HTTP-only cookie
- * - Validates the refresh token
- * - Verifies user still exists in database
- * - Generates new access and refresh tokens
- * - Sets new tokens in HTTP-only cookies
- * - Returns user data without password
- *
- * Security Considerations:
- * - Refresh tokens are longer-lived (7 days) than access tokens (1 hour)
- * - New refresh token is issued on each refresh (token rotation)
- * - Old refresh token becomes invalid after refresh
- * - Prevents token reuse and extends session
- *
- * @route POST /authentication/refresh
- * @cookie refreshToken (required)
- * @returns { message: string, status: string, user: object }
- */
 export default class Refresh {
-    constructor() { }
-
     private get router() {
         return express.Router();
     }
@@ -36,54 +16,97 @@ export default class Refresh {
     }
 
     private _refreshRoute(): Router {
-        return this.router.post("/refresh", async (req: Request<never, never, never>, res: Response): Promise<void> => {
+        return this.router.post("/refresh", authRateLimit, async (req: Request<never, never, never>, res: Response): Promise<void> => {
+            const refreshToken = req.cookies?.refreshToken;
+            if (!refreshToken) {
+                AuthCookieUtil.clearAuthCookies(res);
+                res.status(401).json({
+                    message: "Refresh token not found",
+                    status: Status.failed
+                });
+                return;
+            }
+
+            let payload: JWTPayload;
             try {
-                const refreshToken = req.cookies.refreshToken;
+                payload = JWTUtil.verifyRefreshToken(refreshToken);
+            } catch {
+                AuthCookieUtil.clearAuthCookies(res);
+                res.status(401).json({
+                    message: "Invalid or expired refresh token",
+                    status: Status.failed
+                });
+                return;
+            }
 
-                if (!refreshToken) {
+            if (!payload.tokenId) {
+                AuthCookieUtil.clearAuthCookies(res);
+                res.status(401).json({
+                    message: "Invalid or expired refresh token",
+                    status: Status.failed
+                });
+                return;
+            }
+
+            try {
+                const rotated = await this.prismaClient.$transaction(async (tx) => {
+                    const now = new Date();
+                    const session = await tx.refreshSession.findUnique({
+                        where: { tokenId: payload.tokenId }
+                    });
+
+                    if (!session || session.userId !== payload.userId) {
+                        return null;
+                    }
+
+                    const user = await tx.user.findUnique({
+                        where: { id: payload.userId }
+                    });
+                    if (!user) {
+                        return null;
+                    }
+
+                    const claimed = await tx.refreshSession.updateMany({
+                        where: {
+                            tokenId: payload.tokenId,
+                            userId: payload.userId,
+                            revokedAt: null,
+                            expiresAt: { gt: now }
+                        },
+                        data: { revokedAt: now }
+                    });
+
+                    if (claimed.count !== 1) {
+                        await tx.refreshSession.updateMany({
+                            where: {
+                                familyId: session.familyId,
+                                revokedAt: null
+                            },
+                            data: { revokedAt: now }
+                        });
+                        return null;
+                    }
+
+                    const tokens = await AuthSessionUtil.issueTokenPair({
+                        userId: user.id,
+                        email: user.email || ''
+                    }, session.familyId, tx);
+
+                    return { tokens, user };
+                });
+
+                if (!rotated) {
+                    AuthCookieUtil.clearAuthCookies(res);
                     res.status(401).json({
-                        message: "Refresh token not found",
+                        message: "Invalid or expired refresh token",
                         status: Status.failed
                     });
                     return;
                 }
 
-                const payload = JWTUtil.verifyToken(refreshToken);
+                AuthCookieUtil.setAuthCookies(res, rotated.tokens);
 
-                const user = await this.prismaClient.user.findUnique({
-                    where: { id: payload.userId }
-                });
-
-                if (!user) {
-                    res.status(401).json({
-                        message: "User not found",
-                        status: Status.failed
-                    });
-                    return;
-                }
-
-                const { accessToken, refreshToken: newRefreshToken } = JWTUtil.generateTokenPair({
-                    userId: user.id,
-                    email: user.email || ''
-                });
-
-                const isProduction = process.env.NODE_ENV === 'production';
-                res.cookie('accessToken', accessToken, {
-                    httpOnly: true,
-                    secure: isProduction,
-                    sameSite: 'strict',
-                    maxAge: 60 * 60 * 1000
-                });
-
-                res.cookie('refreshToken', newRefreshToken, {
-                    httpOnly: true,
-                    secure: isProduction,
-                    sameSite: 'strict',
-                    maxAge: 7 * 24 * 60 * 60 * 1000
-                });
-
-                const { password: _, ...userWithoutPassword } = user;
-
+                const { password: _, ...userWithoutPassword } = rotated.user;
                 res.status(200).json({
                     message: "Token refreshed successfully",
                     status: Status.successful,
@@ -91,8 +114,8 @@ export default class Refresh {
                 });
             } catch (error) {
                 console.error("Error during token refresh:", error);
-                res.status(401).json({
-                    message: "Invalid or expired refresh token",
+                res.status(500).json({
+                    message: "Failed to refresh token",
                     status: Status.failed
                 });
             }

@@ -1,7 +1,13 @@
 import express, { Request, Response, Router } from "express";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import passport from 'passport';
-import { JWTUtil } from "../../../../../shared/utils/jwt.util.ts";
-// import Status from "../../../../../shared/types/enums/status.enum.ts";
+import { isGoogleOAuthConfigured } from "../../../../../shared/config/oauth.config.ts";
+import { AuthSessionUtil } from "../../../../../shared/utils/auth-session.util.ts";
+import { AuthCookieUtil } from "../../../../../shared/utils/cookie.util.ts";
+import { authRateLimit } from "../../../../../shared/middleware/rate-limit.middleware.ts";
+
+const STATE_COOKIE = 'googleOAuthState';
+const STATE_COOKIE_PATH = '/authentication/google/callback';
 
 export class GoogleOAuth {
   constructor() { }
@@ -15,9 +21,26 @@ export class GoogleOAuth {
    * Initiates Google OAuth2 authentication flow
    */
   private get _googleAuthRoute(): Router {
-    return this.router.get('/google', passport.authenticate('google', {
-      scope: ['profile', 'email'],
-    }));
+    if (!isGoogleOAuthConfigured()) {
+      return this.router.get('/google', (_req, res) => {
+        res.status(503).json({ message: 'Google authentication is not configured' });
+      });
+    }
+
+    return this.router.get('/google', authRateLimit, (req, res, next) => {
+      const state = randomBytes(32).toString('base64url');
+      res.cookie(STATE_COOKIE, state, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'staging',
+        sameSite: 'lax',
+        path: STATE_COOKIE_PATH,
+        maxAge: 10 * 60 * 1000,
+      });
+      passport.authenticate('google', {
+        scope: ['profile', 'email'],
+        state,
+      })(req, res, next);
+    });
   }
 
   /**
@@ -25,45 +48,69 @@ export class GoogleOAuth {
    * Handles Google OAuth2 callback
    */
   private get _googleCallbackRoute(): Router {
+    if (!isGoogleOAuthConfigured()) {
+      return this.router.get('/google/callback', (_req, res) => {
+        res.status(503).json({ message: 'Google authentication is not configured' });
+      });
+    }
+
     return this.router.get(
       '/google/callback',
+      (req, res, next) => {
+        const state = req.query.state;
+        const cookieState = req.cookies?.[STATE_COOKIE];
+        const stateBytes = typeof state === 'string' ? Buffer.from(state) : null;
+        const cookieStateBytes = typeof cookieState === 'string' ? Buffer.from(cookieState) : null;
+        res.clearCookie(STATE_COOKIE, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'staging',
+          sameSite: 'lax',
+          path: STATE_COOKIE_PATH,
+        });
+
+        if (
+          !stateBytes ||
+          !cookieStateBytes ||
+          stateBytes.length !== cookieStateBytes.length ||
+          !timingSafeEqual(stateBytes, cookieStateBytes)
+        ) {
+          res.status(400).json({ message: 'Invalid OAuth state' });
+          return;
+        }
+
+        next();
+      },
       passport.authenticate('google', { session: false }),
       async (req: Request, res: Response): Promise<void> => {
         try {
-          if (!req.user) {
-            res.redirect(`${process.env.FRONTEND_URL}/login?error=auth_failed`);
+          const frontendUrl = process.env.FRONTEND_URL;
+          if (!frontendUrl) {
+            res.status(503).json({ message: 'Google authentication redirect is not configured' });
             return;
           }
 
-          const user = req.user as any;
+          if (!req.user?.userId) {
+            res.redirect(new URL('/login?error=auth_failed', frontendUrl).toString());
+            return;
+          }
 
-          // Generate JWT tokens
-          const { accessToken, refreshToken } = JWTUtil.generateTokenPair({
-            userId: user.id,
-            email: user.email || ''
+          const tokens = await AuthSessionUtil.issueTokenPair({
+            userId: req.user.userId,
+            email: req.user.email || ''
           });
-
-          // Set HTTP-only cookies
-          const isProduction = process.env.NODE_ENV === 'production';
-          res.cookie('accessToken', accessToken, {
-            httpOnly: true,
-            secure: isProduction,
-            sameSite: 'strict',
-            maxAge: 60 * 60 * 1000 // 1 hour
-          });
-
-          res.cookie('refreshToken', refreshToken, {
-            httpOnly: true,
-            secure: isProduction,
-            sameSite: 'strict',
-            maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
-          });
+          AuthCookieUtil.setAuthCookies(res, tokens);
 
           // Redirect to frontend with success
-          res.redirect(`${process.env.FRONTEND_URL}/auth/success`);
+          res.redirect(new URL('/auth/success', frontendUrl).toString());
         } catch (error) {
           console.error('Google OAuth callback error:', error);
-          res.redirect(`${process.env.FRONTEND_URL}/login?error=server_error`);
+          const frontendUrl = process.env.FRONTEND_URL;
+          if (frontendUrl) {
+            res.redirect(new URL('/login?error=server_error', frontendUrl).toString());
+            return;
+          }
+
+          res.status(500).json({ message: 'Google authentication failed' });
         }
       }
     );

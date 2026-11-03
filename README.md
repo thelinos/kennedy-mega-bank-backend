@@ -1,12 +1,11 @@
 # Kennedy Mega Bank Backend
 
-A TypeScript Express backend with Prisma, MongoDB, and local SQLite database support.
+A TypeScript Express backend using PostgreSQL for staging/production and SQLite for local development and tests.
 
 ## Features
 
 - TypeScript with Express
-- Prisma ORM with SQLite (local database)
-- MongoDB integration
+- Prisma ORM with environment-specific SQLite and PostgreSQL schemas
 - Feature-first architecture
 - Multi-environment support (development, staging, production)
 - Environment-specific configurations
@@ -92,7 +91,6 @@ tests/
 
 **Interconnections**:
 - **`src/shared/database/prisma.ts`**: Connects Prisma before all tests
-- **`src/shared/database/mongodb.ts`**: Disconnects MongoDB after all tests
 - **All test files**: Executed after setup, before teardown
 - **`vitest.config.ts`**: Registered as setup file
 
@@ -109,7 +107,6 @@ Before all tests:
 
 After all tests:
   → Disconnect from Prisma
-  → Disconnect from MongoDB (graceful)
 ```
 
 #### `package.json`
@@ -118,7 +115,6 @@ After all tests:
 **Interconnections**:
 - **Dependencies**: `@prisma/client` and `prisma` enable Prisma ORM functionality
 - **Dependencies**: `express` provides the web framework
-- **Dependencies**: `mongodb` enables MongoDB connectivity
 - **Dependencies**: `dotenv` loads environment variables
 - **DevDependencies**: `vitest` provides test runner
 - **DevDependencies**: `supertest` provides HTTP testing
@@ -165,8 +161,6 @@ After all tests:
 **Interconnections**:
 - **`DATABASE_URL`**: Read by `prisma/schema.prisma` via `env("DATABASE_URL")`
 - **`DATABASE_URL`**: Loaded by `src/shared/config/index.ts` via `dotenv`
-- **`MONGODB_URI`**: Loaded by `src/shared/config/index.ts` and passed to MongoDB connection
-- **`MONGODB_DB_NAME`**: Loaded by `src/shared/config/index.ts` for MongoDB database selection
 - **`PORT`**: Loaded by `src/shared/config/index.ts` for server port
 - **`NODE_ENV`**: Loaded by `src/shared/config/index.ts` for environment identification
 
@@ -177,14 +171,16 @@ After all tests:
 
 **Interconnections**: Same as `.env.development` but for staging environment.
 - Used when running `npm run staging`
-- Different port (3001) and database files (`staging.db`) to avoid conflicts
+- Uses PostgreSQL via `prisma/postgresql/schema.prisma`
+- Uses port 3001
 
 #### `.env.production`
 **Purpose**: Production environment variables.
 
 **Interconnections**: Same as `.env.development` but for production environment.
 - Used when running `npm run prod`
-- Different port (3002) and database files (`prod.db`)
+- Uses PostgreSQL via `prisma/postgresql/schema.prisma`
+- Uses port 3002
 
 #### `.env`
 **Purpose**: Fallback environment file (currently development copy).
@@ -266,63 +262,9 @@ disconnectPrisma()
   → Resets singleton for reconnection
 ```
 
-#### `src/shared/database/mongodb.ts`
-**Purpose**: MongoDB client singleton and connection management.
-
-**Interconnections**:
-- **`mongodb`**: MongoDB Node.js driver
-- **`getMongoClient(uri)`**: Creates singleton MongoClient instance
-- **`getMongoDb(uri, dbName)`**: Returns specific database from client
-- **`disconnectMongo()`**: Closes MongoDB connection gracefully
-- **`src/shared/database/config.ts`**: Imports `getMongoDb()` and `disconnectMongo()`
-
-**Impact**:
-- Singleton pattern ensures single MongoDB connection per application
-- Graceful handling of connection failures
-- Changes affect all code using MongoDB queries
-
-**Flow**:
-```
-First call to getMongoDb(uri, dbName)
-  → Calls getMongoClient(uri)
-  → Creates MongoClient if not exists
-  → Connects to MongoDB
-  → Returns database instance
-Subsequent calls
-  → Returns existing database instance
-disconnectMongo()
-  → Closes MongoClient
-  → Resets singletons for reconnection
-```
-
 #### `src/shared/database/config.ts`
-**Purpose**: Unified database connection management.
-
-**Interconnections**:
-- **`src/shared/database/prisma.ts`**: Imports `getPrismaClient()` and `disconnectPrisma()`
-- **`src/shared/database/mongodb.ts`**: Imports `getMongoDb()` and `disconnectMongo()`
-- **`connectDatabases(mongoUri, mongoDbName)`**: Connects to both databases
-- **`disconnectAllDatabases()`**: Disconnects from both databases
-- **`src/shared/app.ts`**: Receives `DatabaseConfig` interface
-- **Environment entry points**: Call `connectDatabases()` and pass to `createApp()`
-
-**Impact**:
-- Centralizes database connection logic
-- Graceful degradation if MongoDB fails (continues with Prisma only)
-- Changes affect how all environments connect to databases
-
-**Flow**:
-```
-Entry point calls connectDatabases(mongoUri, mongoDbName)
-  → Calls getPrismaClient() (always succeeds)
-  → Calls getMongoDb(mongoUri, mongoDbName)
-    → If fails, logs warning and continues with mock
-  → Returns { prisma, mongo }
-Entry point passes databases to createApp(databases)
-Shutdown calls disconnectAllDatabases()
-  → Calls disconnectPrisma()
-  → Calls disconnectMongo() (with error handling)
-```
+Connects and disconnects the active Prisma database. A separate
+MongoDB integration is not included in the active application.
 
 ### Shared Middleware Layer
 
@@ -380,7 +322,7 @@ Any route throws error
 - **`src/shared/database/config.ts`**: Imports `DatabaseConfig` interface
 - **`src/shared/middleware/requestLogger.ts`**: Registers request logging
 - **`src/shared/middleware/errorHandler.ts`**: Registers error handling
-- **Environment entry points**: Import `createApp()` and call with databases
+- **Environment entry points**: Instantiate `App` with the active Prisma database
 
 **Impact**:
 - Centralizes Express app configuration
@@ -389,7 +331,7 @@ Any route throws error
 
 **Flow**:
 ```
-Entry point calls createApp(databases)
+Entry point calls new App(databases).app()
   → Creates Express app
   → Registers JSON body parser
   → Registers URL-encoded parser
@@ -408,8 +350,8 @@ Entry point calls app.listen(port)
 
 **Interconnections**:
 - **`src/shared/config/index.ts`**: Imports `loadEnv()` and `getEnvConfig()`
-- **`src/shared/database/config.ts`**: Imports `connectDatabases()` and `disconnectAllDatabases()`
-- **`src/shared/app.ts`**: Imports `createApp()`
+- **`src/shared/database/config.ts`**: Imports `connectPrismaOnly()` and `disconnectAllDatabases()`
+- **`src/shared/app/app.ts`**: Creates the Express application
 - **`.env.development`**: Loaded by `loadEnv('development')`
 - **`package.json`**: Called by `npm run dev` script
 
@@ -424,12 +366,9 @@ npm run dev executes tsx watch src/environments/development/index.ts
   → loadEnv('development')
     → Loads .env.development
   → getEnvConfig()
-    → Returns { nodeEnv, port, databaseUrl, mongoUri, mongoDbName }
-  → connectDatabases(mongoUri, mongoDbName)
-    → Connects to Prisma (SQLite)
-    → Connects to MongoDB (or fails gracefully)
-  → createApp(databases)
-    → Creates Express app with middleware
+    → Returns { nodeEnv, port, databaseUrl }
+  → Connects to Prisma using SQLite
+  → Creates Express app with middleware
   → app.listen(port)
     → Server starts on port 3000
   → SIGINT handler
@@ -443,7 +382,7 @@ npm run dev executes tsx watch src/environments/development/index.ts
 **Interconnections**: Identical to development but:
 - Calls `loadEnv('staging')` → loads `.env.staging`
 - Uses port 3001 from `.env.staging`
-- Uses `staging.db` from `.env.staging`
+- Uses PostgreSQL via `prisma/postgresql/schema.prisma`
 - Called by `npm run staging`
 
 **Impact**: Provides isolated staging environment for testing.
@@ -454,7 +393,7 @@ npm run dev executes tsx watch src/environments/development/index.ts
 **Interconnections**: Identical to development but:
 - Calls `loadEnv('production')` → loads `.env.production`
 - Uses port 3002 from `.env.production`
-- Uses `prod.db` from `.env.production`
+- Uses PostgreSQL via `prisma/postgresql/schema.prisma`
 - Called by `npm run prod`
 
 **Impact**: Provides isolated production environment.
@@ -476,21 +415,13 @@ npm run dev executes tsx watch src/environments/development/index.ts
    ↓
 6. Returns: { nodeEnv: 'development', port: 3000, databaseUrl: 'file:./dev.db', ... }
    ↓
-7. development/index.ts calls connectDatabases(mongoUri, mongoDbName)
+7. development/index.ts connects Prisma using the SQLite schema
    ↓
 8. src/shared/database/config.ts calls getPrismaClient()
    ↓
 9. src/shared/database/prisma.ts creates PrismaClient (singleton)
    ↓
-10. src/shared/database/config.ts calls getMongoDb(mongoUri, mongoDbName)
-    ↓
-11. src/shared/database/mongodb.ts connects to MongoDB (or fails gracefully)
-    ↓
-12. Returns { prisma, mongo }
-    ↓
-13. development/index.ts calls createApp(databases)
-    ↓
-14. src/shared/app.ts creates Express app
+10. development/index.ts creates the Express app
     ↓
 15. Registers middleware (requestLogger, errorHandler)
     ↓
@@ -612,7 +543,7 @@ npm run dev
 ```
 This executes `tsx watch src/environments/development/index.ts`, which:
 - Loads `.env.development`
-- Connects to `dev.db` (SQLite) and MongoDB
+- Connects to SQLite using `prisma/schema.prisma`
 - Starts server on port 3000
 
 ### Staging
@@ -621,24 +552,26 @@ npm run staging
 ```
 This executes `tsx watch src/environments/staging/index.ts`, which:
 - Loads `.env.staging`
-- Connects to `staging.db` (SQLite) and MongoDB
+- Generates the PostgreSQL Prisma client and connects to PostgreSQL
 - Starts server on port 3001
 
 ### Production
 ```bash
 npm run prod
 ```
-This executes `tsx watch src/environments/production/index.ts`, which:
+This executes `tsx src/environments/production/index.ts`, which:
 - Loads `.env.production`
-- Connects to `prod.db` (SQLite) and MongoDB
+- Generates the PostgreSQL Prisma client and connects to PostgreSQL
 - Starts server on port 3002
 
 ## Building
 
 ```bash
 npm run build
+npm run build:production
 ```
-This compiles TypeScript to JavaScript in the `dist/` directory using `tsconfig.json` configuration.
+`build` compiles the currently generated Prisma client. `build:production` first
+generates the PostgreSQL client, then compiles TypeScript to `dist/`.
 
 ## Running Built Application
 
@@ -654,6 +587,7 @@ These run the compiled JavaScript from `dist/` using Node.js.
 
 ```bash
 npm run prisma:generate    # Generate Prisma client from schema
+npm run prisma:generate:postgres # Generate PostgreSQL Prisma client
                            # Updates @prisma/client with new types
                            # Required after schema changes
 
@@ -664,6 +598,7 @@ npm run prisma:migrate:dev # Run migrations in development
 
 npm run prisma:migrate:deploy # Deploy migrations (production)
                                # Applies pending migrations without prompts
+npm run prisma:migrate:deploy:postgres # Deploy PostgreSQL migrations
 
 npm run prisma:studio      # Open Prisma Studio GUI
                            # Visual database browser
@@ -672,22 +607,30 @@ npm run prisma:studio      # Open Prisma Studio GUI
 
 ## Database
 
-The project uses two databases:
+Development and tests use SQLite (`prisma/schema.prisma`). Staging and
+production use PostgreSQL (`prisma/postgresql/schema.prisma`) with an
+independent migration history under `prisma/postgresql/migrations`.
+Profile picture storage is not implemented; add a cloud object-storage
+integration before enabling uploads.
 
-### SQLite (via Prisma)
-- **Purpose**: Local database for structured relational data
-- **Connection**: Configured via `DATABASE_URL` in `.env` files
-- **Schema**: Defined in `prisma/schema.prisma`
-- **Models**: User, Account, Transaction
-- **File Location**: `dev.db`, `staging.db`, or `prod.db` based on environment
-- **Benefits**: Zero setup, file-based, portable
+Accounts store an ISO 4217 currency code (USD by default) and balances and
+transactions store integer minor units using that currency's precision. No
+currency conversion or cross-currency transfer is performed. Transaction
+creation requires a client-supplied `Idempotency-Key`; retries with the same
+key and payload return the original result, while reusing a key with a
+different payload is rejected. Public users cannot post credits; only user IDs
+configured in `LEDGER_CREDIT_USER_IDS` may perform controlled credit operations.
 
-### MongoDB
-- **Purpose**: Document database for flexible data storage
-- **Connection**: Configured via `MONGODB_URI` in `.env` files
-- **Database Name**: Configured via `MONGODB_DB_NAME` in `.env` files
-- **Graceful Degradation**: Application continues if MongoDB is unavailable
-- **Benefits**: Flexible schema, scalable, production-ready
+Refresh tokens are persisted, rotated, and revoked on logout or password reset.
+OAuth callback state is bound to an HTTP-only cookie, and authentication and
+ledger routes use shared database-backed rate limits. When deployed behind a
+reverse proxy, configure `TRUST_PROXY_HOPS` to the exact trusted hop count so
+per-IP limits use the client address; do not enable unrestricted proxy trust.
+
+This repository still does not provide payment-rail connectivity, settlement,
+reconciliation, regulatory controls, or independent financial-system
+certification. Do not use it to hold or move real funds without a dedicated
+security, compliance, and financial-domain review.
 
 ## Health Check
 
@@ -700,7 +643,8 @@ Returns:
 ```json
 {
   "status": "ok",
-  "environment": "development"
+  "environment": "development",
+  "database": "SQLite"
 }
 ```
 
@@ -743,8 +687,7 @@ When adding new features (e.g., user routes, account management):
 
 Each environment is completely isolated:
 - **Different ports**: 3000 (dev), 3001 (staging), 3002 (prod)
-- **Different databases**: dev.db, staging.db, prod.db
-- **Different MongoDB databases**: kennedy-mega-bank-dev, -staging, -prod
+- **Different database providers**: SQLite for development; PostgreSQL for staging and production
 - **Independent configurations**: Separate .env files
 
 This ensures no cross-contamination between environments.
@@ -793,7 +736,6 @@ The following testing modules are installed:
 
 **Interconnections**:
 - **`src/shared/database/prisma.ts`**: Connects Prisma before tests
-- **`src/shared/database/mongodb.ts`**: Disconnects MongoDB after tests
 - **All test files**: Executed after setup, before teardown
 
 **Flow**:
@@ -804,7 +746,6 @@ Before all tests:
 
 After all tests:
   → Disconnect from Prisma
-  → Disconnect from MongoDB (graceful)
 ```
 
 ### Test Categories
@@ -915,22 +856,22 @@ describe('Database Integration Tests', () => {
 ```typescript
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
-import { createApp } from '../../src/shared/app.js';
-import { connectDatabases, disconnectAllDatabases } from '../../src/shared/database/config.js';
+import { App } from '../../src/shared/app/app.js';
+import type { Express } from 'express';
+import type { DatabaseConfig } from '../../src/shared/database/config.js';
+import { connectPrismaOnly, disconnectAllDatabases } from '../../src/shared/database/config.js';
 
 describe('Application E2E Tests', () => {
-  let app: any;
+  let app: Express;
+  let databases: DatabaseConfig;
 
   beforeAll(async () => {
-    const databases = await connectDatabases(
-      'mongodb://localhost:27017/test',
-      'test-db'
-    );
-    app = createApp(databases);
+    databases = await connectPrismaOnly();
+    app = await new App(databases).app();
   });
 
   afterAll(async () => {
-    await disconnectAllDatabases();
+    await disconnectAllDatabases(databases);
   });
 
   it('should return 200 with status ok', async () => {
@@ -1191,31 +1132,30 @@ describe('User Service Integration', () => {
 ```typescript
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
-import { createApp } from '../../src/shared/app.js';
-import { connectDatabases, disconnectAllDatabases } from '../../src/shared/database/config.js';
+import { App } from '../../src/shared/app/app.js';
+import type { Express } from 'express';
+import type { DatabaseConfig } from '../../src/shared/database/config.js';
+import { connectPrismaOnly, disconnectAllDatabases } from '../../src/shared/database/config.js';
 
 describe('User API E2E', () => {
-  let app: any;
+  let app: Express;
+  let databases: DatabaseConfig;
 
   beforeAll(async () => {
-    const databases = await connectDatabases(
-      'mongodb://localhost:27017/test',
-      'test-db'
-    );
-    app = createApp(databases);
+    databases = await connectPrismaOnly();
+    app = await new App(databases).app();
   });
 
   afterAll(async () => {
-    await disconnectAllDatabases();
+    await disconnectAllDatabases(databases);
   });
 
-  it('should create user via POST /users', async () => {
+  it('should create user via POST /authentication/create-user', async () => {
     const response = await request(app)
-      .post('/users')
+      .post('/authentication/create-user')
       .send({
         email: 'test@example.com',
-        username: 'testuser',
-        name: 'Test User',
+        password: 'StrongPass123!',
       });
 
     expect(response.status).toBe(201);

@@ -5,8 +5,10 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
+    globalSetup: ['./tests/global-setup.ts'],
     include: ['tests/**/*.test.ts'],
     exclude: ['node_modules', 'dist'],
+    fileParallelism: false,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

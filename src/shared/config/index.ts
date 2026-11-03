@@ -26,12 +26,23 @@ export const loadEnv = (env: 'development' | 'staging' | 'production') => {
  * This function extracts and returns environment configuration as a typed object.
  * It provides default values for missing environment variables.
  *
- * @returns { nodeEnv, port, databaseUrl, mongoUri, mongoDbName } - Configuration object
+ * @returns { nodeEnv, port, databaseUrl } - Configuration object
  */
 export const getEnvConfig = () => ({
   nodeEnv: process.env.NODE_ENV || 'development',
   port: parseInt(process.env.PORT || '3000', 10),
-  databaseUrl: process.env.DATABASE_URL || '',
-  mongoUri: process.env.MONGODB_URI || '',
-  mongoDbName: process.env.MONGODB_DB_NAME || 'kennedy-mega-bank'
+  databaseUrl: process.env.DATABASE_URL || ''
 });
+
+export const assertDatabaseProvider = (
+  databaseUrl: string,
+  provider: 'sqlite' | 'postgresql'
+): void => {
+  const isExpectedProvider = provider === 'sqlite'
+    ? databaseUrl.startsWith('file:')
+    : databaseUrl.startsWith('postgresql://') || databaseUrl.startsWith('postgres://');
+
+  if (!isExpectedProvider) {
+    throw new Error(`DATABASE_URL must use the ${provider} provider for this environment`);
+  }
+};

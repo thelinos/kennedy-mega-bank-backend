@@ -13,10 +13,9 @@ shared/
 ├── config/           # Environment configuration
 │   ├── index.ts      # Environment loading and config
 │   └── README.md
-├── database/         # Database connections
+├── database/         # Prisma database connections
 │   ├── config.ts     # Database configuration
 │   ├── prisma.ts     # Prisma client
-│   ├── mongodb.ts    # MongoDB client
 │   └── README.md
 ├── middleware/      # Express middleware
 │   ├── auth.middleware.ts    # JWT authentication
@@ -160,7 +159,7 @@ export class YourService {
 Shared code depends on:
 - **Express**: Web framework
 - **Prisma**: ORM for structured data
-- **MongoDB**: Document database for unstructured data
+- **PostgreSQL**: Staging and production database provider
 - **jsonwebtoken**: JWT token handling
 - **bcrypt**: Password hashing
 - **@sendgrid/mail**: Email service

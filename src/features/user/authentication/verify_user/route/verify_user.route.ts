@@ -3,6 +3,7 @@ import { getPrismaClient } from "../../../../../shared/database/prisma.ts";
 import { SendGridService } from "../../../../../shared/services/email/sendgrid.service.ts";
 import { TokenUtil } from "../../../../../shared/utils/token.util.ts";
 import Status from "../../../../../shared/types/enums/status.enum.ts";
+import { authRateLimit } from "../../../../../shared/middleware/rate-limit.middleware.ts";
 
 /**
  * VerifyUser - Handles email verification
@@ -51,7 +52,7 @@ export default class VerifyUser {
     }
 
     private _sendVerificationEmail(): Router {
-        return this.router.post("/send-verification-email", async (req: Request<never, never, { email: string }>, res: Response): Promise<void> => {
+        return this.router.post("/send-verification-email", authRateLimit, async (req: Request<never, never, { email: string }>, res: Response): Promise<void> => {
             try {
                 const { email } = req.body;
 
@@ -118,7 +119,7 @@ export default class VerifyUser {
     }
 
     private _verifyEmail(): Router {
-        return this.router.get("/verify-email", async (req: Request<{ token?: string }, never, never>, res: Response): Promise<void> => {
+        return this.router.get("/verify-email", authRateLimit, async (req: Request<{ token?: string }, never, never>, res: Response): Promise<void> => {
             try {
                 const { token } = req.query;
 
