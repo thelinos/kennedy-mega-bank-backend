@@ -7,3 +7,6 @@ prisma/dev.db
 prisma/dev.db-journal
 tests/test.db
 tests/test.db-journal
+.env.production
+.env.development
+.env.staging
