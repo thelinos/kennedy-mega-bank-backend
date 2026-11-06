@@ -1,4 +1,5 @@
 import { Express } from "express"
+import swaggerUi from "swagger-ui-express";
 
 import { DatabaseConfig } from "../database/config.ts";
 import { requestLogger } from "../middleware/requestLogger.ts";
@@ -10,6 +11,7 @@ import { CreateAccount } from "../../features/account/index.ts";
 import { CreateTransaction } from "../../features/transaction/index.ts";
 import { CreateUser, ForgotPassword, GoogleOAuth, PhoneAuth, Me, ResetPassword, Refresh, Logout, Login, VerifyUser } from "../../features/user/authentication/index.ts";
 import { CollectName, CollectProfilePicture, UpdateName, UpdateProfilePicture } from "../../features/user/account_details/index.ts";
+import { openApiSpec } from "./openapi.ts";
 
 /**
  * App - Main application class for configuring and initializing the Express server
@@ -60,6 +62,11 @@ export class App {
       // Initialize Passport
       const app = registry.getApp();
       app.use(passport.initialize());
+
+      app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(openApiSpec));
+      app.get("/api-docs.json", (_req, res) => {
+        res.json(openApiSpec);
+      });
 
       // Register routes
       registry.registerRoute("/authentication", new CreateUser().createUserRoute);

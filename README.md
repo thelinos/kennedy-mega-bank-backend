@@ -12,6 +12,12 @@ A TypeScript Express backend using PostgreSQL for staging/production and SQLite 
 - Comprehensive testing infrastructure (unit, integration, e2e)
 - Code coverage reporting
 
+## API documentation
+
+When the server is running, Swagger UI is available at `/api-docs` and the OpenAPI 3.0 specification is available at `/api-docs.json`. The documentation is served in development, staging, and production.
+
+Most protected endpoints use the HTTP-only `accessToken` cookie set by registration, login, phone verification, or token refresh. The token refresh endpoint uses the `refreshToken` cookie. In a browser, requests that send authentication cookies must use an allowed origin.
+
 ## Architecture Overview
 
 This project follows a **layered architecture** with clear separation of concerns and comprehensive testing infrastructure:
@@ -525,15 +531,67 @@ Generates code coverage report in:
 
 ## Environment Setup
 
-Copy the example environment file and configure it:
+### Local development
+
+`.env.development` is ignored by Git and may already contain local credentials.
+Do not overwrite it by copying `.env.example` over an existing file. For a new
+checkout, create it only if it does not exist:
 
 ```bash
-cp .env.example .env.development
-cp .env.example .env.staging
-cp .env.example .env.production
+test -f .env.development || cp .env.example .env.development
 ```
 
-Update the environment variables in each file as needed.
+Set the following in `.env.development`:
+
+- `DATABASE_URL="file:./dev-local.db"` so development does not use or alter
+  the existing `prisma/dev.db`.
+- `JWT_SECRET` to a random secret of at least 32 bytes. Generate one with
+  `openssl rand -base64 48` and store it only in the ignored env file.
+- `CORS_ORIGINS` to the exact frontend origin(s), e.g.
+  `http://localhost:5173`. Do not use `*`.
+- Keep `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL`, and
+  `FRONTEND_URL` empty unless configuring Google OAuth end-to-end.
+- Configure SendGrid with `SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL`, and
+  `SENDGRID_FROM_NAME` if you want to test email verification or password
+  reset locally. In this checkout, those same three SendGrid settings are
+  also present in the ignored `.env.staging` and `.env.production` files at
+  your direction. For actual deployments, inject them through the platform's
+  secret manager rather than copying local env files.
+
+Initialize only the separate development database:
+
+```bash
+npm run prisma:generate
+DATABASE_URL="file:./dev-local.db" npx prisma migrate deploy --schema prisma/schema.prisma
+```
+
+Prisma resolves this SQLite URL relative to the schema file, so this creates
+`prisma/dev-local.db`. Tests use the separate ignored `tests/test.db`.
+
+### Connect a frontend
+
+1. Start the API with `npm run dev`.
+2. Set the frontend API base URL to `http://localhost:3000`.
+3. Configure browser requests to include cookies (for `fetch`, use
+   `credentials: "include"`; for Axios, use `withCredentials: true`).
+4. Ensure the frontend's exact origin is listed in `CORS_ORIGINS`.
+5. Check `GET http://localhost:3000/health`; it should return `status: "ok"`
+   and `database: "SQLite"`.
+6. Sign up or log in through `/authentication/create-user` or
+   `/authentication/login`, then create an account with `/accounts`.
+
+Transaction writes require an `Idempotency-Key` header. Ordinary users may
+debit their own account but cannot create credits. To test credit behavior,
+put the test user's ID in `LEDGER_CREDIT_USER_IDS` and restart the API. Do not
+use real financial funds.
+
+### Staging and production
+
+These environments use PostgreSQL. Set `DATABASE_URL` to the correct
+environment-specific PostgreSQL connection string, and supply strong,
+environment-specific JWT secrets, `CORS_ORIGINS`, and SendGrid variables via
+the deployment platform's secret manager. Do not copy production secrets into
+development or commit any `.env` file.
 
 ## Running the Application
 
@@ -541,7 +599,8 @@ Update the environment variables in each file as needed.
 ```bash
 npm run dev
 ```
-This executes `tsx watch src/environments/development/index.ts`, which:
+This first generates the SQLite Prisma client, then executes
+`tsx watch src/environments/development/index.ts`, which:
 - Loads `.env.development`
 - Connects to SQLite using `prisma/schema.prisma`
 - Starts server on port 3000
@@ -582,6 +641,10 @@ npm run start:prod   # For production
 ```
 
 These run the compiled JavaScript from `dist/` using Node.js.
+`start:dev` regenerates the SQLite Prisma client first; use
+`build:production`/`start:prod` for the PostgreSQL client. The generated Prisma
+client is shared, so always use the matching environment script after switching
+between database providers.
 
 ## Prisma Commands
 

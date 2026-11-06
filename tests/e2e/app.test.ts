@@ -51,6 +51,20 @@ describe('Application E2E Tests', () => {
     });
   });
 
+  describe('API Documentation', () => {
+    it('serves Swagger UI and the OpenAPI specification', async () => {
+      const uiResponse = await request(app).get('/api-docs/');
+      expect(uiResponse.status).toBe(200);
+      expect(uiResponse.text).toContain('swagger-ui');
+
+      const specResponse = await request(app).get('/api-docs.json');
+      expect(specResponse.status).toBe(200);
+      expect(specResponse.body.openapi).toBe('3.0.3');
+      expect(specResponse.body.paths['/authentication/login'].post).toBeDefined();
+      expect(specResponse.body.paths['/transactions'].post).toBeDefined();
+    });
+  });
+
   describe('Authentication', () => {
     it('should create a user and set auth cookies', async () => {
       const response = await request(app)
