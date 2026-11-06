@@ -1,5 +1,24 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterAll, beforeAll, beforeEach, describe, it, expect } from 'vitest';
 import { assertDatabaseProvider, loadEnv, getEnvConfig } from '../../src/shared/config/index.js';
+
+const originalWorkingDirectory = process.cwd();
+const envFixtureDirectory = mkdtempSync(join(tmpdir(), 'kennedy-config-tests-'));
+
+for (const environment of ['development', 'staging', 'production']) {
+  writeFileSync(join(envFixtureDirectory, `.env.${environment}`), `NODE_ENV=${environment}\n`);
+}
+
+beforeAll(() => {
+  process.chdir(envFixtureDirectory);
+});
+
+afterAll(() => {
+  process.chdir(originalWorkingDirectory);
+  rmSync(envFixtureDirectory, { recursive: true, force: true });
+});
 
 describe('Shared Config - Unit Tests', () => {
   beforeEach(() => {
